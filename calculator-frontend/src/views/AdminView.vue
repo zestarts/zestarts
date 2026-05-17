@@ -4,7 +4,7 @@
       <div class="admin-card users-panel">
         <div class="card-header">
           <h2>👥 用户管理</h2>
-          <button class="btn-refresh" @click="loadUsers" :disabled="loadingUsers">
+          <button class="btn-refresh" @click="store.loadUsers" :disabled="loadingUsers">
             🔄 刷新
           </button>
         </div>
@@ -135,18 +135,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { Client } from '@stomp/stompjs'
-import SockJS from 'sockjs-client'
-import api from '../api'
+import { reactive, onMounted, onUnmounted } from 'vue'
+import { useActivityStore } from '../stores/activity'
 
-const users = ref([])
-const loadingUsers = ref(false)
-const activityLogs = reactive([])
-const wsConnected = ref(false)
-const savingPerms = ref(false)
+const store = useActivityStore()
 
-let stompClient = null
+const { users, activityLogs, wsConnected, loadingUsers } = store
+const savingPerms = reactive({ value: false })
 
 const allOperations = ['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'SQRT', 'POWER']
 
@@ -167,60 +162,18 @@ const permissionEditor = reactive({
 })
 
 onMounted(() => {
-  loadUsers()
-  loadRecentActivity()
-  connectWebSocket()
+  store.loadUsers()
+  store.loadRecentActivity()
+  store.connectWebSocket()
 })
 
 onUnmounted(() => {
-  if (stompClient) stompClient.deactivate()
+  store.disconnectWebSocket()
 })
-
-async function loadUsers() {
-  loadingUsers.value = true
-  try {
-    const res = await api.get('/admin/users')
-    users.value = res.data
-  } catch (e) {
-    console.error('Failed to load users', e)
-  } finally {
-    loadingUsers.value = false
-  }
-}
-
-async function loadRecentActivity() {
-  try {
-    const res = await api.get('/admin/activity/recent')
-    activityLogs.splice(0, activityLogs.length, ...res.data)
-  } catch (e) {
-    console.error('Failed to load activity', e)
-  }
-}
-
-function connectWebSocket() {
-  const socket = new SockJS('/ws')
-  stompClient = new Client({
-    webSocketFactory: () => socket,
-    onConnect: () => {
-      wsConnected.value = true
-      stompClient.subscribe('/topic/activity', (message) => {
-        const data = JSON.parse(message.body)
-        activityLogs.unshift({ ...data })
-        if (activityLogs.length > 50) activityLogs.pop()
-      })
-    },
-    onDisconnect: () => {
-      wsConnected.value = false
-    },
-    reconnectDelay: 5000
-  })
-  stompClient.activate()
-}
 
 async function changeRole(user, newRole) {
   try {
-    const res = await api.put(`/admin/users/${user.username}/role`, { role: newRole })
-    Object.assign(user, res.data)
+    await store.changeRole(user.username, newRole)
   } catch (e) {
     alert('修改角色失败: ' + (e.response?.data?.error || '未知错误'))
   }
@@ -228,8 +181,7 @@ async function changeRole(user, newRole) {
 
 async function toggleUser(user) {
   try {
-    await api.put(`/admin/users/${user.username}/toggle`)
-    user.enabled = !user.enabled
+    await store.toggleUser(user.username)
   } catch (e) {
     alert('操作失败: ' + (e.response?.data?.error || '未知错误'))
   }
@@ -238,8 +190,7 @@ async function toggleUser(user) {
 async function deleteUser(user) {
   if (!confirm(`确定要删除用户 "${user.username}" 吗？`)) return
   try {
-    await api.delete(`/admin/users/${user.username}`)
-    users.value = users.value.filter(u => u.id !== user.id)
+    await store.deleteUser(user.username)
   } catch (e) {
     alert('删除失败: ' + (e.response?.data?.error || '未知错误'))
   }
@@ -268,12 +219,7 @@ function togglePerm(op) {
 async function savePermissions() {
   savingPerms.value = true
   try {
-    const res = await api.put('/admin/users/permissions', {
-      targetUsername: permissionEditor.user.username,
-      permissions: [...permissionEditor.selected]
-    })
-    const idx = users.value.findIndex(u => u.id === permissionEditor.user.id)
-    if (idx >= 0) users.value[idx] = res.data
+    await store.savePermissions(permissionEditor.user.username, [...permissionEditor.selected])
     closePermissionEditor()
   } catch (e) {
     alert('保存权限失败: ' + (e.response?.data?.error || '未知错误'))
