@@ -135,13 +135,13 @@
 </template>
 
 <script setup>
-import { reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useActivityStore } from '../stores/activity'
 
 const store = useActivityStore()
 
 const { users, activityLogs, wsConnected, loadingUsers } = store
-const savingPerms = reactive({ value: false })
+const savingPerms = ref(false)
 
 const allOperations = ['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'SQRT', 'POWER']
 

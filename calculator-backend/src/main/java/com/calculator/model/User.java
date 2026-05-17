@@ -95,6 +95,7 @@ public class User {
 
     public void setRole(Role role) {
         this.role = role;
+        this.permissions = getDefaultPermissions(role);
     }
 
     public Set<OperationType> getPermissions() {
