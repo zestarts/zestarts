@@ -14,45 +14,60 @@
             class="op-btn"
             :class="{
               'op-available': op.available,
-              'op-disabled': !op.available,
+              'op-locked': !op.available,
               'op-active': selectedOp === op.type
             }"
-            :disabled="!op.available"
             @click="selectOperation(op)"
           >
             <span class="op-symbol">{{ op.symbol }}</span>
             <span class="op-label">{{ op.label }}</span>
+            <span v-if="!op.available" class="op-lock">🔒</span>
           </button>
         </div>
 
         <div class="calc-inputs" v-if="selectedOp">
-          <div class="input-row">
-            <div class="input-group" v-if="selectedOp.needsA">
-              <label>操作数 A</label>
-              <input
-                ref="inputA"
-                v-model="operandA"
-                type="number"
-                step="any"
-                placeholder="输入数字"
-                @keyup.enter="calculate"
-              />
+          <template v-if="selectedOp.available">
+            <div class="input-row">
+              <div class="input-group" v-if="selectedOp.needsA">
+                <label>操作数 A</label>
+                <input
+                  ref="inputA"
+                  v-model="operandA"
+                  type="number"
+                  step="any"
+                  placeholder="输入数字"
+                  @keyup.enter="calculate"
+                />
+              </div>
+              <div class="input-group" v-if="selectedOp.needsB">
+                <label>操作数 B</label>
+                <input
+                  v-model="operandB"
+                  type="number"
+                  step="any"
+                  placeholder="输入数字"
+                  @keyup.enter="calculate"
+                />
+              </div>
             </div>
-            <div class="input-group" v-if="selectedOp.needsB">
-              <label>操作数 B</label>
-              <input
-                v-model="operandB"
-                type="number"
-                step="any"
-                placeholder="输入数字"
-                @keyup.enter="calculate"
-              />
+            <button class="btn-calculate" @click="calculate" :disabled="calculating">
+              <span v-if="calculating" class="spinner"></span>
+              {{ calculating ? '计算中...' : '= 计算' }}
+            </button>
+          </template>
+
+          <div v-else class="vip-prompt">
+            <div class="vip-icon">⭐</div>
+            <div class="vip-title">{{ selectedOp.label }}需要VIP权限</div>
+            <div class="vip-desc">
+              您当前的角色无法使用此功能，请联系管理员升级为VIP用户
+            </div>
+            <div class="vip-actions">
+              <button class="btn-vip" @click="goAdmin">
+                联系管理员
+              </button>
             </div>
           </div>
-          <button class="btn-calculate" @click="calculate" :disabled="calculating">
-            <span v-if="calculating" class="spinner"></span>
-            {{ calculating ? '计算中...' : '= 计算' }}
-          </button>
         </div>
 
         <div v-if="!selectedOp" class="calc-hint">
@@ -79,9 +94,11 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 
+const router = useRouter()
 const auth = useAuthStore()
 
 const operations = ref([])
@@ -125,13 +142,23 @@ function selectOperation(op) {
   result.value = ''
   operandA.value = ''
   operandB.value = ''
-  nextTick(() => {
-    if (inputA.value) inputA.value.focus()
-  })
+  if (op.available) {
+    nextTick(() => {
+      if (inputA.value) inputA.value.focus()
+    })
+  }
+}
+
+function goAdmin() {
+  if (auth.isAdmin) {
+    router.push('/admin')
+  } else {
+    result.value = '请联系管理员升级VIP权限'
+  }
 }
 
 async function calculate() {
-  if (!selectedOp.value) return
+  if (!selectedOp.value || !selectedOp.value.available) return
 
   calculating.value = true
   try {
@@ -211,6 +238,7 @@ async function calculate() {
 }
 
 .op-btn {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -223,7 +251,7 @@ async function calculate() {
   transition: all 0.2s;
 }
 
-.op-btn:hover:not(:disabled) {
+.op-btn:hover {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.12);
 }
@@ -233,9 +261,13 @@ async function calculate() {
   border-color: rgba(102, 126, 234, 0.4);
 }
 
-.op-btn.op-disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+.op-btn.op-locked {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.op-btn.op-locked:hover {
+  border-color: rgba(246, 173, 85, 0.3);
+  background: rgba(246, 173, 85, 0.05);
 }
 
 .op-symbol {
@@ -247,9 +279,24 @@ async function calculate() {
   color: #667eea;
 }
 
+.op-locked .op-symbol {
+  color: #555570;
+}
+
 .op-label {
   font-size: 0.75rem;
   color: #8888a0;
+}
+
+.op-locked .op-label {
+  color: #555570;
+}
+
+.op-lock {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 0.6rem;
 }
 
 .calc-inputs {
@@ -338,6 +385,50 @@ async function calculate() {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.vip-prompt {
+  text-align: center;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(246, 173, 85, 0.08), rgba(237, 137, 54, 0.08));
+  border: 1px solid rgba(246, 173, 85, 0.2);
+  border-radius: 12px;
+  animation: fadeIn 0.3s ease;
+}
+
+.vip-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.vip-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f6ad55;
+  margin-bottom: 0.3rem;
+}
+
+.vip-desc {
+  font-size: 0.85rem;
+  color: #a0a0b8;
+  margin-bottom: 1rem;
+}
+
+.btn-vip {
+  padding: 0.6rem 1.5rem;
+  background: linear-gradient(135deg, #f6ad55, #ed8936);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-vip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(246, 173, 85, 0.3);
 }
 
 .calc-hint {
