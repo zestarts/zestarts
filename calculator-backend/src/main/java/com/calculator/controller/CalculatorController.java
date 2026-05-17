@@ -6,6 +6,8 @@ import com.calculator.model.OperationType;
 import com.calculator.service.CalculatorService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +27,7 @@ public class CalculatorController {
     }
 
     @PostMapping("/calculate")
+    @PreAuthorize("hasAuthority(#request.operation.name())")
     public ResponseEntity<CalculationResponse> calculate(
             @Valid @RequestBody CalculationRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -44,6 +47,11 @@ public class CalculatorController {
                 "username", userDetails.getUsername(),
                 "availableOperations", operations
         ));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDenied(AccessDeniedException e) {
+        return ResponseEntity.status(403).body(Map.of("error", "您没有权限执行此操作"));
     }
 
     @ExceptionHandler(RuntimeException.class)
