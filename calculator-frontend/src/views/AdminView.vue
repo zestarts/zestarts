@@ -16,19 +16,22 @@
             :class="{ 'user-disabled': !user.enabled }"
           >
             <div class="user-main">
-              <div class="user-avatar">{{ user.username.charAt(0).toUpperCase() }}</div>
+              <div class="user-avatar" :class="avatarClass(user.role)">{{ user.username.charAt(0).toUpperCase() }}</div>
               <div class="user-detail">
-                <div class="user-name">{{ user.username }}</div>
-                <div class="user-perms">
-                  <span
-                    v-for="perm in user.permissions"
-                    :key="perm"
-                    class="perm-tag"
-                  >{{ permLabels[perm] || perm }}</span>
+                <div class="user-name-line">
+                  <span class="user-name">{{ user.username }}</span>
+                  <span class="user-role-tag" :class="roleTagClass(user.role)">{{ roleLabel(user.role) }}</span>
+                </div>
+                <div class="user-meta">
+                  <span v-if="user.lastActiveAt" class="last-active">
+                    🟢 {{ formatRelative(user.lastActiveAt) }}
+                  </span>
+                  <span v-else class="last-active never">⚫ 从未活动</span>
+                  <span class="perm-count">{{ user.permissions.length }} 项权限</span>
                 </div>
               </div>
             </div>
-            <div class="user-role">
+            <div class="user-controls">
               <select
                 :value="user.role"
                 @change="changeRole(user, $event.target.value)"
@@ -38,27 +41,22 @@
                 <option value="ROLE_VIP">VIP</option>
                 <option value="ROLE_ADMIN">管理员</option>
               </select>
-            </div>
-            <div class="user-actions">
+              <button class="ctrl-btn btn-perm" @click="openPermissionEditor(user)">
+                ⚡ 赋权
+              </button>
               <button
-                class="action-btn"
+                class="ctrl-btn"
                 :class="user.enabled ? 'btn-warn' : 'btn-success'"
                 @click="toggleUser(user)"
               >
                 {{ user.enabled ? '禁用' : '启用' }}
               </button>
               <button
-                class="action-btn btn-perm"
-                @click="openPermissionEditor(user)"
-              >
-                权限
-              </button>
-              <button
-                class="action-btn btn-danger"
+                class="ctrl-btn btn-danger"
                 @click="deleteUser(user)"
                 :disabled="user.username === 'admin'"
               >
-                删除
+                🗑
               </button>
             </div>
           </div>
@@ -99,11 +97,13 @@
       <div v-if="permissionEditor.open" class="modal-overlay" @click.self="closePermissionEditor">
         <div class="modal-card">
           <div class="modal-header">
-            <h3>编辑权限 - {{ permissionEditor.user.username }}</h3>
+            <h3>⚡ 赋予权限 — {{ permissionEditor.user.username }}</h3>
             <button class="modal-close" @click="closePermissionEditor">✕</button>
           </div>
           <div class="modal-body">
-            <p class="modal-desc">选择该用户可以使用的运算类型：</p>
+            <p class="modal-desc">
+              为 <strong>{{ permissionEditor.user.username }}</strong>（{{ roleLabel(permissionEditor.user.role) }}）选择可使用的运算：
+            </p>
             <div class="perm-grid">
               <label
                 v-for="op in allOperations"
@@ -117,6 +117,7 @@
                   :checked="permissionEditor.selected.has(op)"
                   @change="togglePerm(op)"
                 />
+                <span class="perm-icon">{{ opIcons[op] }}</span>
                 <span class="perm-label">{{ opLabels[op] }}</span>
               </label>
             </div>
@@ -124,7 +125,7 @@
           <div class="modal-footer">
             <button class="btn-cancel" @click="closePermissionEditor">取消</button>
             <button class="btn-save" @click="savePermissions" :disabled="savingPerms">
-              {{ savingPerms ? '保存中...' : '保存' }}
+              {{ savingPerms ? '保存中...' : '保存权限' }}
             </button>
           </div>
         </div>
@@ -134,7 +135,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import api from '../api'
@@ -149,12 +150,15 @@ let stompClient = null
 
 const allOperations = ['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'SQRT', 'POWER']
 
-const permLabels = {
+const opLabels = {
   ADD: '加法', SUBTRACT: '减法', MULTIPLY: '乘法',
   DIVIDE: '除法', SQRT: '平方根', POWER: '幂运算'
 }
 
-const opLabels = { ...permLabels }
+const opIcons = {
+  ADD: '+', SUBTRACT: '−', MULTIPLY: '×',
+  DIVIDE: '÷', SQRT: '√', POWER: '^'
+}
 
 const permissionEditor = reactive({
   open: false,
@@ -278,10 +282,34 @@ async function savePermissions() {
   }
 }
 
+function roleLabel(role) {
+  const map = { ROLE_USER: '普通用户', ROLE_VIP: 'VIP', ROLE_ADMIN: '管理员' }
+  return map[role] || role
+}
+
+function roleTagClass(role) {
+  return 'tag-' + (role === 'ROLE_ADMIN' ? 'admin' : role === 'ROLE_VIP' ? 'vip' : 'user')
+}
+
+function avatarClass(role) {
+  return 'avatar-' + (role === 'ROLE_ADMIN' ? 'admin' : role === 'ROLE_VIP' ? 'vip' : 'user')
+}
+
 function formatTime(ts) {
   if (!ts) return ''
   const d = new Date(ts)
   return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function formatRelative(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  const now = new Date()
+  const diff = Math.floor((now - d) / 1000)
+  if (diff < 60) return '刚刚活跃'
+  if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前'
+  if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前'
+  return Math.floor(diff / 86400) + ' 天前'
 }
 </script>
 
@@ -380,7 +408,7 @@ function formatTime(ts) {
 .users-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
   max-height: 450px;
   overflow-y: auto;
 }
@@ -388,8 +416,9 @@ function formatTime(ts) {
 .user-row {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  padding: 0.7rem;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 10px;
   transition: all 0.2s;
@@ -400,51 +429,84 @@ function formatTime(ts) {
 }
 
 .user-row.user-disabled {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .user-main {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  flex: 1;
   min-width: 0;
+  flex: 1;
 }
 
 .user-avatar {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.85rem;
   flex-shrink: 0;
 }
 
+.avatar-user { background: linear-gradient(135deg, #48c78e, #2ecc71); }
+.avatar-vip { background: linear-gradient(135deg, #f6ad55, #ed8936); }
+.avatar-admin { background: linear-gradient(135deg, #667eea, #764ba2); }
+
+.user-detail {
+  min-width: 0;
+}
+
+.user-name-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .user-name {
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.9rem;
 }
 
-.user-perms {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-  margin-top: 0.2rem;
-}
-
-.perm-tag {
-  font-size: 0.65rem;
+.user-role-tag {
+  font-size: 0.6rem;
+  font-weight: 700;
   padding: 0.1rem 0.4rem;
-  background: rgba(102, 126, 234, 0.12);
-  color: #8899dd;
   border-radius: 4px;
+  text-transform: uppercase;
 }
 
-.user-role {
+.tag-user { background: rgba(72, 199, 142, 0.15); color: #48c78e; }
+.tag-vip { background: rgba(246, 173, 85, 0.15); color: #f6ad55; }
+.tag-admin { background: rgba(102, 126, 234, 0.15); color: #667eea; }
+
+.user-meta {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  color: #777790;
+}
+
+.last-active {
+  color: #48c78e;
+}
+
+.last-active.never {
+  color: #555570;
+}
+
+.perm-count {
+  color: #8899dd;
+}
+
+.user-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   flex-shrink: 0;
 }
 
@@ -454,7 +516,7 @@ function formatTime(ts) {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   color: #e0e0e0;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   cursor: pointer;
   outline: none;
 }
@@ -463,14 +525,8 @@ function formatTime(ts) {
   border-color: rgba(102, 126, 234, 0.4);
 }
 
-.user-actions {
-  display: flex;
-  gap: 0.3rem;
-  flex-shrink: 0;
-}
-
-.action-btn {
-  padding: 0.25rem 0.55rem;
+.ctrl-btn {
+  padding: 0.3rem 0.55rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   background: transparent;
@@ -481,18 +537,29 @@ function formatTime(ts) {
   white-space: nowrap;
 }
 
-.action-btn:hover:not(:disabled) {
+.ctrl-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.action-btn:disabled {
+.ctrl-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 
+.btn-perm {
+  background: rgba(102, 126, 234, 0.1);
+  border-color: rgba(102, 126, 234, 0.25);
+  color: #667eea;
+  font-weight: 600;
+}
+
+.btn-perm:hover {
+  background: rgba(102, 126, 234, 0.18) !important;
+  border-color: rgba(102, 126, 234, 0.4) !important;
+}
+
 .btn-warn:hover { color: #f6ad55; border-color: rgba(246, 173, 85, 0.3); }
 .btn-success:hover { color: #48c78e; border-color: rgba(72, 199, 142, 0.3); }
-.btn-perm:hover { color: #667eea; border-color: rgba(102, 126, 234, 0.3); }
 .btn-danger:hover { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
 
 .activity-list {
@@ -502,17 +569,17 @@ function formatTime(ts) {
 
 .activity-row {
   display: grid;
-  grid-template-columns: 70px 70px 55px 1fr 70px;
+  grid-template-columns: 65px 70px 55px 1fr 65px;
   gap: 0.5rem;
   align-items: center;
-  padding: 0.55rem 0;
+  padding: 0.5rem 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   font-size: 0.8rem;
 }
 
 .activity-time {
   color: #555570;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 .activity-user {
@@ -575,7 +642,7 @@ function formatTime(ts) {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   width: 90%;
-  max-width: 420px;
+  max-width: 440px;
   animation: scaleIn 0.2s ease;
 }
 
@@ -624,6 +691,11 @@ function formatTime(ts) {
   font-size: 0.85rem;
   color: #8888a0;
   margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.modal-desc strong {
+  color: #e0e0e0;
 }
 
 .perm-grid {
@@ -636,7 +708,8 @@ function formatTime(ts) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.6rem;
+  gap: 0.4rem;
+  padding: 0.7rem 0.4rem;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   cursor: pointer;
@@ -654,6 +727,18 @@ function formatTime(ts) {
 
 .perm-checkbox:hover {
   border-color: rgba(255, 255, 255, 0.15);
+}
+
+.perm-icon {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #667eea;
+  width: 20px;
+  text-align: center;
+}
+
+.perm-checkbox.checked .perm-icon {
+  color: #a78bfa;
 }
 
 .perm-label {

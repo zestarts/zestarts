@@ -1,6 +1,11 @@
 <template>
   <div class="calculator-page">
     <div class="calc-container">
+      <div v-if="hasLockedOps" class="vip-banner">
+        <span class="banner-icon">⭐</span>
+        <span class="banner-text">升级 VIP 即可解锁全部运算功能</span>
+      </div>
+
       <div class="calc-display">
         <div class="display-expression">{{ expression || '0' }}</div>
         <div class="display-result">{{ result }}</div>
@@ -21,7 +26,7 @@
           >
             <span class="op-symbol">{{ op.symbol }}</span>
             <span class="op-label">{{ op.label }}</span>
-            <span v-if="!op.available" class="op-lock">🔒</span>
+            <span v-if="!op.available" class="op-lock-badge">🔒 升级VIP</span>
           </button>
         </div>
 
@@ -112,6 +117,7 @@ const history = reactive([])
 const inputA = ref(null)
 
 const lastResult = computed(() => history.length > 0)
+const hasLockedOps = computed(() => operations.value.some(op => !op.available))
 
 const opConfigs = {
   ADD: { symbol: '+', label: '加法', needsA: true, needsB: true },
@@ -194,6 +200,34 @@ async function calculate() {
 .calc-container {
   width: 100%;
   max-width: 480px;
+}
+
+.vip-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, rgba(246, 173, 85, 0.12), rgba(237, 137, 54, 0.08));
+  border: 1px solid rgba(246, 173, 85, 0.25);
+  border-radius: 12px;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { border-color: rgba(246, 173, 85, 0.25); }
+  50% { border-color: rgba(246, 173, 85, 0.5); }
+}
+
+.banner-icon {
+  font-size: 1.1rem;
+}
+
+.banner-text {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #f6ad55;
 }
 
 .calc-display {
@@ -292,11 +326,13 @@ async function calculate() {
   color: #555570;
 }
 
-.op-lock {
-  position: absolute;
-  top: 4px;
-  right: 4px;
+.op-lock-badge {
   font-size: 0.6rem;
+  padding: 0.1rem 0.4rem;
+  background: rgba(246, 173, 85, 0.15);
+  color: #f6ad55;
+  border-radius: 10px;
+  font-weight: 500;
 }
 
 .calc-inputs {
